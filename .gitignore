@@ -1,0 +1,16 @@
+# Session files (contains auth tokens)
+*.session
+*.session-journal
+
+# System files
+.DS_Store
+
+# Logs
+*.log
+
+# Config with credentials (create config.example.json instead)
+config.json
+
+# Large data files (too big for GitHub)
+data/
+*.pdf
