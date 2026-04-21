@@ -6,6 +6,7 @@ Generate PDF from scraped Telegram messages.
 - Orders by timestamp
 """
 
+import argparse
 import json
 from pathlib import Path
 from datetime import datetime
@@ -60,6 +61,19 @@ def register_fonts():
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 # Audio/video extensions to show as filename
 MEDIA_EXTENSIONS = {'.mp3', '.mp4', '.m4a', '.wav', '.ogg', '.mov', '.avi', '.mkv', '.pdf', '.doc', '.docx'}
+
+
+def filter_messages_by_date_range(messages, start_day, end_day):
+    """Keep messages whose calendar day (UTC date prefix) is within [start_day, end_day] inclusive."""
+    out = []
+    for m in messages:
+        d = m.get("date", "")
+        if len(d) < 10:
+            continue
+        day = d[:10]
+        if start_day <= day <= end_day:
+            out.append(m)
+    return out
 
 
 def load_timeline():
@@ -453,6 +467,24 @@ def generate_group_pdf(group_name, messages, output_dir):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Generate PDF from scraped Telegram messages.")
+    parser.add_argument(
+        "--from-date",
+        metavar="YYYY-MM-DD",
+        help="Include messages on and after this calendar day (use with --to-date)",
+    )
+    parser.add_argument(
+        "--to-date",
+        metavar="YYYY-MM-DD",
+        help="Include messages on and before this calendar day (use with --from-date)",
+    )
+    parser.add_argument(
+        "--per-group",
+        action="store_true",
+        help="Also write one PDF per group (default when no date filter)",
+    )
+    args = parser.parse_args()
+
     print("PDF Generator")
     print("=" * 50)
 
@@ -463,6 +495,18 @@ def main():
         return
 
     print(f"Loaded {len(messages)} messages")
+
+    date_filter = args.from_date and args.to_date
+    if (args.from_date or args.to_date) and not date_filter:
+        print("Error: use both --from-date and --to-date together.")
+        return
+
+    if date_filter:
+        messages = filter_messages_by_date_range(messages, args.from_date, args.to_date)
+        if not messages:
+            print(f"No messages between {args.from_date} and {args.to_date} (inclusive).")
+            return
+        print(f"After date filter: {len(messages)} messages ({args.from_date} … {args.to_date})")
 
     # Sort by date (should already be sorted)
     messages.sort(key=lambda x: x.get('date', ''))
@@ -484,21 +528,21 @@ def main():
     print("=" * 50)
     print(f"✅ Combined PDF created: {output_path}")
     print(f"   Size: {output_path.stat().st_size / 1024 / 1024:.1f} MB")
-    
-    # Also create individual PDFs per group
-    print("\n" + "=" * 50)
-    print("Creating individual PDFs per group...")
-    
-    # Group messages by group name
-    groups = {}
-    for msg in messages:
-        group = msg.get('group', 'Unknown')
-        if group not in groups:
-            groups[group] = []
-        groups[group].append(msg)
-    
-    for group_name, group_messages in groups.items():
-        generate_group_pdf(group_name, group_messages, BASE_DIR)
+
+    do_per_group = args.per_group or not date_filter
+    if do_per_group:
+        print("\n" + "=" * 50)
+        print("Creating individual PDFs per group...")
+
+        groups = {}
+        for msg in messages:
+            group = msg.get('group', 'Unknown')
+            if group not in groups:
+                groups[group] = []
+            groups[group].append(msg)
+
+        for group_name, group_messages in groups.items():
+            generate_group_pdf(group_name, group_messages, BASE_DIR)
 
 
 if __name__ == "__main__":
